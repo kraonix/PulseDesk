@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  WON
+  LOST
+}
+
+enum LeadSource {
+  WEBSITE
+  REFERRAL
+  COLD_OUTREACH
+  EVENT
+  OTHER
+}
+
+enum LeadActivityType {
+  LEAD_CREATED
+  LEAD_UPDATED
+  STATUS_CHANGED
+  ASSIGNED_MEMBER_CHANGED
+  FOLLOW_UP_DATE_CHANGED
+  NOTE_ADDED
+  LEAD_DELETED
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+  leads Lead[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  name           String
+  passwordHash   String
+  role           UserRole     @default(MEMBER)
+  avatarUrl      String?
+  organizationId String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization  Organization?  @relation(fields: [organizationId], references: [id])
+  createdLeads  Lead[]         @relation("LeadCreatedBy")
+  assignedLeads Lead[]         @relation("LeadAssignedTo")
+  notes         LeadNote[]
+  activities    LeadActivity[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Lead {
+  id              String     @id @default(cuid())
+  name            String
+  company         String?
+  email           String?
+  phone           String?
+  status          LeadStatus @default(NEW)
+  source          LeadSource @default(OTHER)
+  value           Decimal?
+  assignedToId    String?
+  organizationId  String
+  createdById     String
+  followUpDate    DateTime?
+  lastContactedAt DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id])
+  createdBy    User           @relation("LeadCreatedBy",  fields: [createdById],  references: [id])
+  assignedTo   User?          @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
+  notes        LeadNote[]
+  tags         LeadTag[]
+  activities   LeadActivity[]
+
+  @@index([organizationId, status])
+  @@index([assignedToId])
+  @@index([followUpDate])
+}
+
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead   Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+}
+
+model LeadTag {
+  id     String @id @default(cuid())
+  leadId String
+  name   String
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, name])
+}
+
+model LeadActivity {
+  id        String           @id @default(cuid())
+  leadId    String
+  userId    String
+  action    LeadActivityType
+  /// JSON payload: { field?, oldValue?, newValue? }
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([leadId, createdAt])
+}
